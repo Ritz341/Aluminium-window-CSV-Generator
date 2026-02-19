@@ -1,7 +1,6 @@
 """
-AL Window Profile CSV Generator - Streamlit Web App v2.5
-Single-view layout — no sidebar, everything visible at once.
-Supports insert-at-position and reordering.
+AL Window Profile CSV Generator — Streamlit v2.5
+Clean single-view layout. No sidebar.
 """
 
 import streamlit as st
@@ -12,26 +11,101 @@ from io import StringIO
 
 # ── Page config ─────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AL Window Profile Generator",
+    page_title="Window Profile Generator",
     page_icon="🪟",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# ── Hide sidebar completely ─────────────────────────────────────────
+# ── Theme ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
     [data-testid="collapsedControl"] { display: none; }
     section[data-testid="stSidebar"] { display: none; }
-    .block-container { padding-top: 1.5rem; padding-bottom: 1rem; max-width: 1600px; }
+
+    .block-container {
+        padding: 1rem 2rem 1rem 2rem;
+        max-width: 1800px;
+        font-family: 'DM Sans', sans-serif;
+    }
+
+    /* header bar */
+    .app-header {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        padding: 18px 28px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: baseline;
+        gap: 14px;
+        border-bottom: 3px solid #F59E0B;
+    }
+    .app-header h1 {
+        color: #F8FAFC;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin: 0;
+        letter-spacing: -0.02em;
+    }
+    .app-header span {
+        color: #64748B;
+        font-size: 0.8rem;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* section labels */
+    .sec-label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.7rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: #94A3B8;
+        border-bottom: 1px solid #E2E8F0;
+        padding-bottom: 6px;
+        margin-bottom: 12px;
+    }
+
+    /* metrics */
     div[data-testid="stMetric"] {
         background: #F8FAFC;
         border: 1px solid #E2E8F0;
         border-radius: 8px;
-        padding: 12px 16px;
+        padding: 10px 14px;
+        border-left: 3px solid #F59E0B;
     }
-    div[data-testid="stMetric"] label { font-size: 0.8rem; color: #64748B; }
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] { font-size: 1.6rem; color: #1E40AF; }
+    div[data-testid="stMetric"] label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748B;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1.4rem;
+        font-weight: 500;
+        color: #0F172A;
+    }
+
+    /* table styling */
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #E2E8F0;
+        border-radius: 8px;
+    }
+
+    /* footer */
+    .app-footer {
+        text-align: center;
+        color: #94A3B8;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.65rem;
+        padding: 10px 0 2px;
+        letter-spacing: 0.05em;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -92,369 +166,273 @@ def get_profile_code(color_choice, profile_type):
 
 
 # ── Session state ───────────────────────────────────────────────────
-if 'windows' not in st.session_state:
-    st.session_state.windows = []
-if 'dealer' not in st.session_state:
-    st.session_state.dealer = ''
-if 'tag' not in st.session_state:
-    st.session_state.tag = ''
-if 'color' not in st.session_state:
-    st.session_state.color = '4 Black'
+for key, default in [('windows', []), ('dealer', ''), ('tag', ''), ('color', '4 Black')]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 
-def renumber_windows():
-    """Renumber all windows sequentially after any insert/delete/move."""
+def renumber():
     for i, w in enumerate(st.session_state.windows, 1):
         w['number'] = i
 
 
 # ════════════════════════════════════════════════════════════════════
-#  CSV GENERATION LOGIC  (v2.5 — 'Top' → 'TOP' fix applied)
+#  CSV GENERATION  (v2.5 — 'Top' → 'TOP' fix)
 # ════════════════════════════════════════════════════════════════════
-def gen_fixed_lite(window, color, colorcode, today, start_id):
-    rows = []
-    wm, hm = window['width_mm'], window['height_mm']
-    pos = window['number']
+
+def _row(sid, ktnbar, code, desc, wm10, hm10, orient, pos, nccode, today, color, colorcode):
+    return [
+        sid, 1, 1, 1, ktnbar, 90, 90, code, desc, wm10, hm10,
+        0, 0, orient, 0, 0, pos, 0, 0,
+        st.session_state.dealer, today, nccode,
+        0, colorcode, color, code, st.session_state.tag,
+        '', '', '', '', '', ''
+    ]
+
+
+def gen_fixed_lite(w, color, cc, today, sid):
+    wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
     code = get_profile_code(color, 'fixed')
     desc = PROFILE_DESCRIPTIONS[code]
-
-    if window['width'] < 14.5:
-        orient = 'TOP/BOTTOM'
-        ktnbar = int(round((wm + 2 * 25.4) * 10))
+    wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
+    if w['width'] < 14.5:
+        o, k = 'TOP/BOTTOM', int(round((wm + 2 * 25.4) * 10))
     else:
-        orient = 'UPRIGHT'
-        ktnbar = int(round((hm + 25.4) * 10))
-
-    for i in range(2):
-        rows.append([
-            start_id + i, 1, 1, 1, ktnbar, 90, 90,
-            code, desc,
-            int(round(wm * 10)), int(round(hm * 10)),
-            0, 0, orient, 0, 0, pos, 0, 0,
-            st.session_state.dealer, today, 'Z MF_UPRIGHT_FIXED',
-            0, colorcode, color, code, st.session_state.tag,
-            '', '', '', '', '', ''
-        ])
-    return rows
+        o, k = 'UPRIGHT', int(round((hm + 25.4) * 10))
+    return [_row(sid + i, k, code, desc, wm10, hm10, o, pos, 'Z MF_UPRIGHT_FIXED', today, color, cc) for i in range(2)]
 
 
-def gen_sliding_xo(window, color, colorcode, today, start_id):
-    rows = []
-    wm, hm = window['width_mm'], window['height_mm']
-    pos = window['number']
-
-    fc  = get_profile_code(color, 'fixed')
-    mc  = get_profile_code(color, 'moving')
+def gen_sliding_xo(w, color, cc, today, sid):
+    wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
+    wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
+    fc, mc = get_profile_code(color, 'fixed'), get_profile_code(color, 'moving')
     stc = get_profile_code(color, 'sash_top_bottom')
-    smc = get_profile_code(color, 'sash_moving')
-    spc = get_profile_code(color, 'sash_pull')
-
-    upright_k = int(round((hm + 25.4) * 10))
-    sash_tb_k = int(round(((wm / 2) + 0.625 * 25.4) * 10))
-    sash_up_k = int(round((hm - 4.8125 * 25.4) * 10))
-
-    wd = int(round(wm * 10))
-    ht = int(round(hm * 10))
-
-    profiles = [
-        (fc,  PROFILE_DESCRIPTIONS[fc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT FIXED SLIDING'),
-        (mc,  PROFILE_DESCRIPTIONS[mc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT MOVING SLIDING'),
-        (stc, PROFILE_DESCRIPTIONS[stc], 'BOTTOM',  sash_tb_k, 'Z SASH TOP'),
-        (stc, PROFILE_DESCRIPTIONS[stc], 'TOP',     sash_tb_k, 'Z SASH BOTTOM'),
-        (smc, PROFILE_DESCRIPTIONS[smc], 'LEFT',    sash_up_k, 'Z AL SASH UPRIGHT MOVING XO'),
-        (spc, PROFILE_DESCRIPTIONS[spc], 'RIGHT',   sash_up_k, 'Z SASH PULL UPRIGHT'),
+    smc, spc = get_profile_code(color, 'sash_moving'), get_profile_code(color, 'sash_pull')
+    uk = int(round((hm + 25.4) * 10))
+    sk = int(round(((wm / 2) + 0.625 * 25.4) * 10))
+    svk = int(round((hm - 4.8125 * 25.4) * 10))
+    P = PROFILE_DESCRIPTIONS
+    specs = [
+        (fc,  P[fc],  'UPRIGHT', uk,  'Z MF_UPRIGHT FIXED SLIDING'),
+        (mc,  P[mc],  'UPRIGHT', uk,  'Z MF_UPRIGHT MOVING SLIDING'),
+        (stc, P[stc], 'BOTTOM',  sk,  'Z SASH TOP'),
+        (stc, P[stc], 'TOP',     sk,  'Z SASH BOTTOM'),
+        (smc, P[smc], 'LEFT',    svk, 'Z AL SASH UPRIGHT MOVING XO'),
+        (spc, P[spc], 'RIGHT',   svk, 'Z SASH PULL UPRIGHT'),
     ]
-
-    for i, (code, desc, orient, ktnbar, nccode) in enumerate(profiles):
-        rows.append([
-            start_id + i, 1, 1, 1, ktnbar, 90, 90,
-            code, desc, wd, ht, 0, 0, orient, 0, 0, pos, 0, 0,
-            st.session_state.dealer, today, nccode,
-            0, colorcode, color, code, st.session_state.tag,
-            '', '', '', '', '', ''
-        ])
-    return rows
+    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc) for i, (c, d, o, k, nc) in enumerate(specs)]
 
 
-def gen_sliding_ox(window, color, colorcode, today, start_id):
-    rows = []
-    wm, hm = window['width_mm'], window['height_mm']
-    pos = window['number']
-
-    fc  = get_profile_code(color, 'fixed')
-    mc  = get_profile_code(color, 'moving')
+def gen_sliding_ox(w, color, cc, today, sid):
+    wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
+    wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
+    fc, mc = get_profile_code(color, 'fixed'), get_profile_code(color, 'moving')
     stc = get_profile_code(color, 'sash_top_bottom')
-    smc = get_profile_code(color, 'sash_moving')
-    spc = get_profile_code(color, 'sash_pull')
-
-    upright_k = int(round((hm + 25.4) * 10))
-    sash_tb_k = int(round(((wm / 2) + 0.625 * 25.4) * 10))
-    sash_up_k = int(round((hm - 4.8125 * 25.4) * 10))
-
-    wd = int(round(wm * 10))
-    ht = int(round(hm * 10))
-
-    # FIX v2.5: 'Top' → 'TOP' (case consistency)
-    # OX orientation pattern is intentionally NOT swapped (confirmed correct)
-    profiles = [
-        (fc,  PROFILE_DESCRIPTIONS[fc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT FIXED SLIDING OX'),
-        (mc,  PROFILE_DESCRIPTIONS[mc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT MOVING SLIDING OX'),
-        (stc, PROFILE_DESCRIPTIONS[stc], 'TOP',     sash_tb_k, 'Z SASH TOP'),
-        (stc, PROFILE_DESCRIPTIONS[stc], 'BOTTOM',  sash_tb_k, 'Z SASH BOTTOM'),
-        (smc, PROFILE_DESCRIPTIONS[smc], 'LEFT',    sash_up_k, 'Z AL SASH UPRIGHT MOVING OX'),
-        (spc, PROFILE_DESCRIPTIONS[spc], 'RIGHT',   sash_up_k, 'Z SASH PULL UPRIGHT'),
+    smc, spc = get_profile_code(color, 'sash_moving'), get_profile_code(color, 'sash_pull')
+    uk = int(round((hm + 25.4) * 10))
+    sk = int(round(((wm / 2) + 0.625 * 25.4) * 10))
+    svk = int(round((hm - 4.8125 * 25.4) * 10))
+    P = PROFILE_DESCRIPTIONS
+    # v2.5 fix: 'Top' → 'TOP'
+    specs = [
+        (fc,  P[fc],  'UPRIGHT', uk,  'Z MF_UPRIGHT FIXED SLIDING OX'),
+        (mc,  P[mc],  'UPRIGHT', uk,  'Z MF_UPRIGHT MOVING SLIDING OX'),
+        (stc, P[stc], 'TOP',     sk,  'Z SASH TOP'),
+        (stc, P[stc], 'BOTTOM',  sk,  'Z SASH BOTTOM'),
+        (smc, P[smc], 'LEFT',    svk, 'Z AL SASH UPRIGHT MOVING OX'),
+        (spc, P[spc], 'RIGHT',   svk, 'Z SASH PULL UPRIGHT'),
     ]
+    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc) for i, (c, d, o, k, nc) in enumerate(specs)]
 
-    for i, (code, desc, orient, ktnbar, nccode) in enumerate(profiles):
-        rows.append([
-            start_id + i, 1, 1, 1, ktnbar, 90, 90,
-            code, desc, wd, ht, 0, 0, orient, 0, 0, pos, 0, 0,
-            st.session_state.dealer, today, nccode,
-            0, colorcode, color, code, st.session_state.tag,
-            '', '', '', '', '', ''
-        ])
-    return rows
+
+GENERATORS = {'Fixed Lite': gen_fixed_lite, 'Sliding Window XO': gen_sliding_xo, 'Sliding Window OX': gen_sliding_ox}
 
 
 def generate_csv():
     if not st.session_state.windows:
         return None
-
-    color     = st.session_state.color
-    colorcode = COLOR_CODES[color]['colorcode']
-    today     = date.today().strftime('%Y-%m-%d')
-
-    rows   = []
-    row_id = 1
-
-    for window in st.session_state.windows:
-        wtype = window['type']
-        if wtype == 'Fixed Lite':
-            new_rows = gen_fixed_lite(window, color, colorcode, today, row_id)
-        elif wtype == 'Sliding Window XO':
-            new_rows = gen_sliding_xo(window, color, colorcode, today, row_id)
-        elif wtype == 'Sliding Window OX':
-            new_rows = gen_sliding_ox(window, color, colorcode, today, row_id)
-        else:
+    color = st.session_state.color
+    cc    = COLOR_CODES[color]['colorcode']
+    today = date.today().strftime('%Y-%m-%d')
+    rows, rid = [], 1
+    for w in st.session_state.windows:
+        gen = GENERATORS.get(w['type'])
+        if not gen:
             continue
-        rows.extend(new_rows)
-        row_id += len(new_rows)
-
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(CSV_HEADER)
-    writer.writerows(rows)
-    return output.getvalue()
+        new = gen(w, color, cc, today, rid)
+        rows.extend(new)
+        rid += len(new)
+    out = StringIO()
+    csv.writer(out).writerow(CSV_HEADER)
+    csv.writer(out).writerows(rows)
+    return out.getvalue()
 
 
 # ════════════════════════════════════════════════════════════════════
-#  UI LAYOUT
+#  LAYOUT
 # ════════════════════════════════════════════════════════════════════
 
 # ── Header ──────────────────────────────────────────────────────────
 st.markdown("""
-<div style="background:#1E293B; padding:16px 24px; border-radius:10px; margin-bottom:16px;">
-    <span style="color:#FFFFFF; font-size:1.4rem; font-weight:700;">🪟 Window Profile Generator</span>
-    <span style="color:#94A3B8; font-size:0.85rem; margin-left:12px;">AL Profile CSV Tool  •  v2.5</span>
+<div class="app-header">
+    <h1>🪟 Window Profile Generator</h1>
+    <span>v2.5  •  AL PROFILE CSV</span>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Three-column layout ────────────────────────────────────────────
-col_left, col_mid, col_right = st.columns([3, 5, 2.5], gap="medium")
+# ── Stats bar (top, always visible) ────────────────────────────────
+n_win = len(st.session_state.windows)
+n_prof = sum(2 if w['type'] == 'Fixed Lite' else 6 for w in st.session_state.windows)
+n_fl = sum(1 for w in st.session_state.windows if w['type'] == 'Fixed Lite')
+n_xo = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window XO')
+n_ox = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window OX')
 
-# ─── LEFT: Project Info + Add Windows ──────────────────────────────
-with col_left:
-    st.markdown("**Project Info**")
-    st.session_state.dealer = st.text_input(
-        "Dealer", value=st.session_state.dealer,
-        label_visibility="collapsed", placeholder="Dealer name"
-    )
-    st.session_state.tag = st.text_input(
-        "Tag", value=st.session_state.tag,
-        label_visibility="collapsed", placeholder="Tag / Project ID"
-    )
+m1, m2, m3, m4, m5, m6, m7 = st.columns([1, 1, 1, 1, 1, 2, 2])
+m1.metric("Windows", n_win)
+m2.metric("Profiles", n_prof)
+m3.metric("Fixed", n_fl)
+m4.metric("XO", n_xo)
+m5.metric("OX", n_ox)
+with m6:
+    st.caption(f"Dealer: **{st.session_state.dealer or '—'}**")
+    st.caption(f"Tag: **{st.session_state.tag or '—'}**")
+with m7:
+    st.caption(f"Color: **{st.session_state.color}**")
+    st.caption(f"Date: **{date.today().strftime('%Y-%m-%d')}**")
+
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+# ── Main body: left input | right table ────────────────────────────
+col_input, col_list = st.columns([1, 2.4], gap="large")
+
+# ─── LEFT: Project Info + Add Form ─────────────────────────────────
+with col_input:
+    st.markdown('<div class="sec-label">Project Setup</div>', unsafe_allow_html=True)
+
+    pc1, pc2 = st.columns(2)
+    with pc1:
+        st.session_state.dealer = st.text_input("Dealer", value=st.session_state.dealer, placeholder="Dealer name")
+    with pc2:
+        st.session_state.tag = st.text_input("Tag / ID", value=st.session_state.tag, placeholder="Project tag")
+
     st.session_state.color = st.selectbox(
         "Color", list(COLOR_CODES.keys()),
-        index=list(COLOR_CODES.keys()).index(st.session_state.color),
-        label_visibility="collapsed"
+        index=list(COLOR_CODES.keys()).index(st.session_state.color)
     )
 
-    st.divider()
-    st.markdown("**Add Windows**")
+    st.markdown('<div class="sec-label" style="margin-top:16px">Add Windows</div>', unsafe_allow_html=True)
 
-    with st.form("add_window_form", clear_on_submit=True):
-        window_type = st.selectbox("Type", ["Fixed Lite", "Sliding Window XO", "Sliding Window OX"])
+    with st.form("add_form", clear_on_submit=True):
+        window_type = st.selectbox("Window Type", ["Fixed Lite", "Sliding Window XO", "Sliding Window OX"])
 
-        fc1, fc2 = st.columns(2)
-        with fc1:
-            width_str = st.text_input("Width (in)", value="", placeholder="e.g. 43.6875")
-        with fc2:
-            height_str = st.text_input("Height (in)", value="", placeholder="e.g. 64.9375")
-
-        qc1, qc2 = st.columns(2)
-        with qc1:
+        wc1, wc2, wc3 = st.columns([2, 2, 1])
+        with wc1:
+            width_str = st.text_input("Width (in)", value="", placeholder="43.6875")
+        with wc2:
+            height_str = st.text_input("Height (in)", value="", placeholder="64.9375")
+        with wc3:
             quantity = st.number_input("Qty", min_value=1, max_value=100, value=1)
-        with qc2:
-            max_pos = len(st.session_state.windows) + 1
-            insert_at = st.number_input(
-                "Insert at pos#",
-                min_value=1, max_value=max_pos, value=max_pos,
-                help="Where to insert. Default = end of list."
-            )
 
-        submitted = st.form_submit_button("Add Window(s)", type="primary", use_container_width=True)
+        add_btn = st.form_submit_button("➕  Add Window(s)", type="primary", use_container_width=True)
 
-        if submitted:
-            # Validate width
+        if add_btn:
             try:
                 width = float(width_str) if width_str.strip() else 0.0
             except ValueError:
                 width = -1.0
-
-            # Validate height
             try:
                 height = float(height_str) if height_str.strip() else 0.0
             except ValueError:
                 height = -1.0
 
             if width <= 0 or height <= 0:
-                st.error("Enter valid positive numbers for width and height")
+                st.error("Enter valid width and height")
             else:
                 narrow = []
-                insert_idx = insert_at - 1  # 0-based
-
-                for i in range(quantity):
-                    new_win = {
-                        'number': 0,  # renumber below
+                for _ in range(quantity):
+                    num = len(st.session_state.windows) + 1
+                    st.session_state.windows.append({
+                        'number': num,
                         'width': width, 'height': height,
                         'width_mm': round(width * 25.4, 2),
                         'height_mm': round(height * 25.4, 2),
                         'type': window_type
-                    }
-                    st.session_state.windows.insert(insert_idx + i, new_win)
-
+                    })
                     if window_type == 'Fixed Lite' and width < 14.5:
-                        narrow.append(insert_at + i)
-
-                renumber_windows()
-
-                st.success(f"Added {quantity} window(s) at position {insert_at}")
+                        narrow.append(num)
+                renumber()
                 if narrow:
-                    st.warning(
-                        f"Window(s) at pos {', '.join(map(str, narrow))} "
-                        f"< 14.5\" — uses TOP/BOTTOM + width+2\""
-                    )
+                    st.warning(f"Pos {', '.join(map(str, narrow))}: narrow (<14.5\") → TOP/BOTTOM + width+2\"")
                 st.rerun()
 
-    # ── Action buttons ──────────────────────────────────────────────
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        if st.button("📋 Duplicate Last", use_container_width=True,
-                     disabled=len(st.session_state.windows) == 0):
-            last = st.session_state.windows[-1].copy()
-            st.session_state.windows.append(last)
-            renumber_windows()
+    # quick actions
+    qa1, qa2 = st.columns(2)
+    with qa1:
+        if st.button("📋 Duplicate Last", use_container_width=True, disabled=n_win == 0):
+            st.session_state.windows.append({**st.session_state.windows[-1]})
+            renumber()
             st.rerun()
-    with ac2:
-        if st.button("🗑️ Clear All", use_container_width=True,
-                     disabled=len(st.session_state.windows) == 0):
+    with qa2:
+        if st.button("🗑️ Clear All", use_container_width=True, disabled=n_win == 0):
             st.session_state.windows = []
             st.rerun()
 
+    # generate
+    st.markdown('<div class="sec-label" style="margin-top:16px">Output</div>', unsafe_allow_html=True)
+    if st.button("📊  Generate CSV", type="primary", use_container_width=True, disabled=n_win == 0):
+        if not st.session_state.dealer or not st.session_state.tag:
+            st.error("Fill in Dealer and Tag")
+        else:
+            csv_data = generate_csv()
+            if csv_data:
+                st.success(f"{n_win} windows → {n_prof} profiles")
+                st.download_button("⬇️  Download CSV", data=csv_data,
+                                   file_name=f"{st.session_state.tag}_windows.csv",
+                                   mime="text/csv", use_container_width=True)
 
-# ─── CENTER: Window List + Reorder ─────────────────────────────────
-with col_mid:
-    st.markdown("**Window List**")
+
+# ─── RIGHT: Window List + Reorder ──────────────────────────────────
+with col_list:
+    st.markdown('<div class="sec-label">Window List</div>', unsafe_allow_html=True)
 
     if st.session_state.windows:
         df = pd.DataFrame(st.session_state.windows)
         df['profiles'] = df['type'].apply(lambda t: 2 if t == 'Fixed Lite' else 6)
-        df = df[['number', 'type', 'width', 'height', 'width_mm', 'height_mm', 'profiles']]
-        df.columns = ['Pos', 'Type', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'Profiles']
+        display_df = df[['number', 'type', 'width', 'height', 'width_mm', 'height_mm', 'profiles']]
+        display_df.columns = ['Pos', 'Type', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'Profiles']
 
-        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
+        st.dataframe(display_df, use_container_width=True, hide_index=True,
+                     height=min(42 + 35 * len(st.session_state.windows), 520))
 
-        # ── Reorder / Delete row ────────────────────────────────────
-        st.caption("Manage windows")
-        rc1, rc2, rc3, rc4 = st.columns([2, 1, 1, 1])
+        # ── Reorder bar ─────────────────────────────────────────────
+        st.markdown('<div class="sec-label" style="margin-top:8px">Reorder / Delete</div>', unsafe_allow_html=True)
+
+        rc1, rc2, rc3, rc4 = st.columns([2.5, 1, 1, 1])
         with rc1:
-            sel_num = st.number_input(
-                "Window #", min_value=1,
-                max_value=len(st.session_state.windows), step=1, value=1,
-                label_visibility="collapsed"
-            )
+            sel = st.number_input("Select window #", min_value=1,
+                                  max_value=n_win, step=1, value=1,
+                                  label_visibility="collapsed")
         with rc2:
-            if st.button("⬆️ Up", use_container_width=True, disabled=sel_num <= 1):
-                idx = sel_num - 1
+            if st.button("⬆️ Move Up", use_container_width=True, disabled=(sel <= 1)):
+                i = sel - 1
                 w = st.session_state.windows
-                w[idx], w[idx - 1] = w[idx - 1], w[idx]
-                renumber_windows()
+                w[i - 1], w[i] = w[i], w[i - 1]
+                renumber()
                 st.rerun()
         with rc3:
-            if st.button("⬇️ Down", use_container_width=True,
-                         disabled=sel_num >= len(st.session_state.windows)):
-                idx = sel_num - 1
+            if st.button("⬇️ Move Down", use_container_width=True, disabled=(sel >= n_win)):
+                i = sel - 1
                 w = st.session_state.windows
-                w[idx], w[idx + 1] = w[idx + 1], w[idx]
-                renumber_windows()
+                w[i], w[i + 1] = w[i + 1], w[i]
+                renumber()
                 st.rerun()
         with rc4:
-            if st.button("🗑️ Del", use_container_width=True):
-                st.session_state.windows.pop(sel_num - 1)
-                renumber_windows()
+            if st.button("🗑️ Delete", use_container_width=True):
+                st.session_state.windows.pop(sel - 1)
+                renumber()
                 st.rerun()
     else:
-        st.info("Add windows using the form on the left")
-
-
-# ─── RIGHT: Summary + Generate ─────────────────────────────────────
-with col_right:
-    st.markdown("**Summary**")
-
-    n_windows  = len(st.session_state.windows)
-    n_profiles = sum(2 if w['type'] == 'Fixed Lite' else 6 for w in st.session_state.windows)
-    n_fixed    = sum(1 for w in st.session_state.windows if w['type'] == 'Fixed Lite')
-    n_xo       = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window XO')
-    n_ox       = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window OX')
-
-    st.metric("Windows", n_windows)
-    st.metric("Profiles", n_profiles)
-
-    mc1, mc2, mc3 = st.columns(3)
-    with mc1:
-        st.metric("Fixed", n_fixed)
-    with mc2:
-        st.metric("XO", n_xo)
-    with mc3:
-        st.metric("OX", n_ox)
-
-    st.divider()
-    st.markdown("**Settings**")
-    st.caption(f"Dealer: {st.session_state.dealer or '—'}")
-    st.caption(f"Tag: {st.session_state.tag or '—'}")
-    st.caption(f"Color: {st.session_state.color}")
-
-    st.divider()
-
-    if st.button("📊 Generate CSV", type="primary", use_container_width=True,
-                 disabled=n_windows == 0):
-        if not st.session_state.dealer or not st.session_state.tag:
-            st.error("Fill in Dealer and Tag first")
-        else:
-            csv_data = generate_csv()
-            if csv_data:
-                st.success(f"{n_windows} windows → {n_profiles} profiles")
-                st.download_button(
-                    label="⬇️ Download CSV",
-                    data=csv_data,
-                    file_name=f"{st.session_state.tag}_windows.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+        st.info("← Add windows using the form")
 
 # ── Footer ──────────────────────────────────────────────────────────
-st.markdown("""
-<div style='text-align:center; color:#94A3B8; padding:12px 0 4px; font-size:0.75rem;'>
-    AL Window Profile CSV Generator v2.5 • Streamlit
-</div>
-""", unsafe_allow_html=True)
+st.markdown('<div class="app-footer">AL Window Profile CSV Generator v2.5</div>', unsafe_allow_html=True)
