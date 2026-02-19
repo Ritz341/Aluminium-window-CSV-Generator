@@ -1,6 +1,7 @@
 """
 AL Window Profile CSV Generator - Streamlit Web App v2.5
 Single-view layout — no sidebar, everything visible at once.
+Supports insert-at-position and reordering.
 """
 
 import streamlit as st
@@ -17,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ── Hide the sidebar toggle completely ──────────────────────────────
+# ── Hide sidebar completely ─────────────────────────────────────────
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] { display: none; }
@@ -90,7 +91,7 @@ def get_profile_code(color_choice, profile_type):
     return COLOR_PROFILE_MAP[color_choice][profile_type]
 
 
-# ── Session state init ──────────────────────────────────────────────
+# ── Session state ───────────────────────────────────────────────────
 if 'windows' not in st.session_state:
     st.session_state.windows = []
 if 'dealer' not in st.session_state:
@@ -101,8 +102,14 @@ if 'color' not in st.session_state:
     st.session_state.color = '4 Black'
 
 
+def renumber_windows():
+    """Renumber all windows sequentially after any insert/delete/move."""
+    for i, w in enumerate(st.session_state.windows, 1):
+        w['number'] = i
+
+
 # ════════════════════════════════════════════════════════════════════
-#  CSV GENERATION LOGIC  (unchanged from v2.4)
+#  CSV GENERATION LOGIC  (v2.5 — 'Top' → 'TOP' fix applied)
 # ════════════════════════════════════════════════════════════════════
 def gen_fixed_lite(window, color, colorcode, today, start_id):
     rows = []
@@ -187,10 +194,12 @@ def gen_sliding_ox(window, color, colorcode, today, start_id):
     wd = int(round(wm * 10))
     ht = int(round(hm * 10))
 
+    # FIX v2.5: 'Top' → 'TOP' (case consistency)
+    # OX orientation pattern is intentionally NOT swapped (confirmed correct)
     profiles = [
         (fc,  PROFILE_DESCRIPTIONS[fc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT FIXED SLIDING OX'),
         (mc,  PROFILE_DESCRIPTIONS[mc],  'UPRIGHT', upright_k, 'Z MF_UPRIGHT MOVING SLIDING OX'),
-        (stc, PROFILE_DESCRIPTIONS[stc], 'Top',     sash_tb_k, 'Z SASH TOP'),
+        (stc, PROFILE_DESCRIPTIONS[stc], 'TOP',     sash_tb_k, 'Z SASH TOP'),
         (stc, PROFILE_DESCRIPTIONS[stc], 'BOTTOM',  sash_tb_k, 'Z SASH BOTTOM'),
         (smc, PROFILE_DESCRIPTIONS[smc], 'LEFT',    sash_up_k, 'Z AL SASH UPRIGHT MOVING OX'),
         (spc, PROFILE_DESCRIPTIONS[spc], 'RIGHT',   sash_up_k, 'Z SASH PULL UPRIGHT'),
@@ -239,7 +248,7 @@ def generate_csv():
 
 
 # ════════════════════════════════════════════════════════════════════
-#  UI LAYOUT — single view, no sidebar
+#  UI LAYOUT
 # ════════════════════════════════════════════════════════════════════
 
 # ── Header ──────────────────────────────────────────────────────────
@@ -256,63 +265,104 @@ col_left, col_mid, col_right = st.columns([3, 5, 2.5], gap="medium")
 # ─── LEFT: Project Info + Add Windows ──────────────────────────────
 with col_left:
     st.markdown("**Project Info**")
-    st.session_state.dealer = st.text_input("Dealer", value=st.session_state.dealer, label_visibility="collapsed", placeholder="Dealer name")
-    st.session_state.tag    = st.text_input("Tag", value=st.session_state.tag, label_visibility="collapsed", placeholder="Tag / Project ID")
-    st.session_state.color  = st.selectbox("Color", list(COLOR_CODES.keys()), index=list(COLOR_CODES.keys()).index(st.session_state.color), label_visibility="collapsed")
+    st.session_state.dealer = st.text_input(
+        "Dealer", value=st.session_state.dealer,
+        label_visibility="collapsed", placeholder="Dealer name"
+    )
+    st.session_state.tag = st.text_input(
+        "Tag", value=st.session_state.tag,
+        label_visibility="collapsed", placeholder="Tag / Project ID"
+    )
+    st.session_state.color = st.selectbox(
+        "Color", list(COLOR_CODES.keys()),
+        index=list(COLOR_CODES.keys()).index(st.session_state.color),
+        label_visibility="collapsed"
+    )
 
     st.divider()
     st.markdown("**Add Windows**")
 
-    with st.form("add_window_form", clear_on_submit=False):
+    with st.form("add_window_form", clear_on_submit=True):
         window_type = st.selectbox("Type", ["Fixed Lite", "Sliding Window XO", "Sliding Window OX"])
 
         fc1, fc2 = st.columns(2)
         with fc1:
-            width = st.number_input("Width (in)", min_value=0.0, step=0.0625, format="%.4f")
+            width_str = st.text_input("Width (in)", value="", placeholder="e.g. 43.6875")
         with fc2:
-            height = st.number_input("Height (in)", min_value=0.0, step=0.0625, format="%.4f")
+            height_str = st.text_input("Height (in)", value="", placeholder="e.g. 64.9375")
 
-        quantity = st.number_input("Qty", min_value=1, max_value=100, value=1)
+        qc1, qc2 = st.columns(2)
+        with qc1:
+            quantity = st.number_input("Qty", min_value=1, max_value=100, value=1)
+        with qc2:
+            max_pos = len(st.session_state.windows) + 1
+            insert_at = st.number_input(
+                "Insert at pos#",
+                min_value=1, max_value=max_pos, value=max_pos,
+                help="Where to insert. Default = end of list."
+            )
 
         submitted = st.form_submit_button("Add Window(s)", type="primary", use_container_width=True)
 
         if submitted:
+            # Validate width
+            try:
+                width = float(width_str) if width_str.strip() else 0.0
+            except ValueError:
+                width = -1.0
+
+            # Validate height
+            try:
+                height = float(height_str) if height_str.strip() else 0.0
+            except ValueError:
+                height = -1.0
+
             if width <= 0 or height <= 0:
-                st.error("Width and height must be > 0")
+                st.error("Enter valid positive numbers for width and height")
             else:
                 narrow = []
-                for _ in range(quantity):
-                    num = len(st.session_state.windows) + 1
-                    st.session_state.windows.append({
-                        'number': num,
+                insert_idx = insert_at - 1  # 0-based
+
+                for i in range(quantity):
+                    new_win = {
+                        'number': 0,  # renumber below
                         'width': width, 'height': height,
                         'width_mm': round(width * 25.4, 2),
                         'height_mm': round(height * 25.4, 2),
                         'type': window_type
-                    })
-                    if window_type == 'Fixed Lite' and width < 14.5:
-                        narrow.append(num)
+                    }
+                    st.session_state.windows.insert(insert_idx + i, new_win)
 
-                st.success(f"Added {quantity} window(s)")
+                    if window_type == 'Fixed Lite' and width < 14.5:
+                        narrow.append(insert_at + i)
+
+                renumber_windows()
+
+                st.success(f"Added {quantity} window(s) at position {insert_at}")
                 if narrow:
-                    st.warning(f"Window(s) {', '.join(map(str, narrow))} < 14.5\" — uses TOP/BOTTOM + width+2\"")
+                    st.warning(
+                        f"Window(s) at pos {', '.join(map(str, narrow))} "
+                        f"< 14.5\" — uses TOP/BOTTOM + width+2\""
+                    )
                 st.rerun()
 
-    # action buttons
+    # ── Action buttons ──────────────────────────────────────────────
     ac1, ac2 = st.columns(2)
     with ac1:
-        if st.button("📋 Duplicate Last", use_container_width=True, disabled=len(st.session_state.windows) == 0):
+        if st.button("📋 Duplicate Last", use_container_width=True,
+                     disabled=len(st.session_state.windows) == 0):
             last = st.session_state.windows[-1].copy()
-            last['number'] = len(st.session_state.windows) + 1
             st.session_state.windows.append(last)
+            renumber_windows()
             st.rerun()
     with ac2:
-        if st.button("🗑️ Clear All", use_container_width=True, disabled=len(st.session_state.windows) == 0):
+        if st.button("🗑️ Clear All", use_container_width=True,
+                     disabled=len(st.session_state.windows) == 0):
             st.session_state.windows = []
             st.rerun()
 
 
-# ─── CENTER: Window List ───────────────────────────────────────────
+# ─── CENTER: Window List + Reorder ─────────────────────────────────
 with col_mid:
     st.markdown("**Window List**")
 
@@ -320,23 +370,38 @@ with col_mid:
         df = pd.DataFrame(st.session_state.windows)
         df['profiles'] = df['type'].apply(lambda t: 2 if t == 'Fixed Lite' else 6)
         df = df[['number', 'type', 'width', 'height', 'width_mm', 'height_mm', 'profiles']]
-        df.columns = ['#', 'Type', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'Profiles']
+        df.columns = ['Pos', 'Type', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'Profiles']
 
-        st.dataframe(df, use_container_width=True, hide_index=True, height=460)
+        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
 
-        # delete row
-        dc1, dc2 = st.columns([2, 1])
-        with dc1:
-            del_num = st.number_input(
-                "Delete window #", min_value=1,
-                max_value=len(st.session_state.windows), step=1,
+        # ── Reorder / Delete row ────────────────────────────────────
+        st.caption("Manage windows")
+        rc1, rc2, rc3, rc4 = st.columns([2, 1, 1, 1])
+        with rc1:
+            sel_num = st.number_input(
+                "Window #", min_value=1,
+                max_value=len(st.session_state.windows), step=1, value=1,
                 label_visibility="collapsed"
             )
-        with dc2:
-            if st.button("Delete", use_container_width=True):
-                st.session_state.windows = [w for w in st.session_state.windows if w['number'] != del_num]
-                for i, w in enumerate(st.session_state.windows, 1):
-                    w['number'] = i
+        with rc2:
+            if st.button("⬆️ Up", use_container_width=True, disabled=sel_num <= 1):
+                idx = sel_num - 1
+                w = st.session_state.windows
+                w[idx], w[idx - 1] = w[idx - 1], w[idx]
+                renumber_windows()
+                st.rerun()
+        with rc3:
+            if st.button("⬇️ Down", use_container_width=True,
+                         disabled=sel_num >= len(st.session_state.windows)):
+                idx = sel_num - 1
+                w = st.session_state.windows
+                w[idx], w[idx + 1] = w[idx + 1], w[idx]
+                renumber_windows()
+                st.rerun()
+        with rc4:
+            if st.button("🗑️ Del", use_container_width=True):
+                st.session_state.windows.pop(sel_num - 1)
+                renumber_windows()
                 st.rerun()
     else:
         st.info("Add windows using the form on the left")
@@ -371,8 +436,8 @@ with col_right:
 
     st.divider()
 
-    # Generate button
-    if st.button("📊 Generate CSV", type="primary", use_container_width=True, disabled=n_windows == 0):
+    if st.button("📊 Generate CSV", type="primary", use_container_width=True,
+                 disabled=n_windows == 0):
         if not st.session_state.dealer or not st.session_state.tag:
             st.error("Fill in Dealer and Tag first")
         else:
@@ -393,4 +458,3 @@ st.markdown("""
     AL Window Profile CSV Generator v2.5 • Streamlit
 </div>
 """, unsafe_allow_html=True)
-
