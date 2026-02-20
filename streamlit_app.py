@@ -172,7 +172,7 @@ def gen_fixed_lite(w, color, cc, today, sid):
     desc = PROFILE_DESCRIPTIONS[code]
     wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
     if w['width'] < 14.5:
-        o, k = 'TOP/BOTTOM', int(round((wm + 2 * 25.4) * 10))
+        o, k = 'TOP/BOTTOM', int(round((hm + 2 * 25.4) * 10))
     else:
         o, k = 'UPRIGHT', int(round((hm + 25.4) * 10))
     return [_row(sid + i, k, code, desc, wm10, hm10, o, pos, 'Z MF_UPRIGHT_FIXED', today, color, cc) for i in range(2)]
@@ -317,6 +317,8 @@ with col_input:
 
             if width <= 0 or height <= 0:
                 st.error("Enter valid width and height")
+            elif window_type == 'Fixed Lite' and width < 12.75:
+                st.error(f"Width {width}\" is below 12.75\" minimum — cannot run on machine")
             else:
                 narrow = []
                 for _ in range(quantity):
@@ -332,7 +334,7 @@ with col_input:
                         narrow.append(num)
                 renumber()
                 if narrow:
-                    st.warning(f"Pos {', '.join(map(str, narrow))}: narrow (<14.5\") → TOP/BOTTOM + width+2\"")
+                    st.warning(f"Pos {', '.join(map(str, narrow))}: narrow (<14.5\") → TOP/BOTTOM + height+2\"")
                 st.rerun()
 
     qa1, qa2 = st.columns(2)
