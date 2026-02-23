@@ -1,9 +1,3 @@
-"""
-AL Window Profile CSV Generator — Streamlit v2.5
-Click a row to select → Move Up / Move Down / Delete.
-No sidebar. Single view.
-"""
-
 import streamlit as st
 import pandas as pd
 import csv
