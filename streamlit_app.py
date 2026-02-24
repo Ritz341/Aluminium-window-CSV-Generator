@@ -1,3 +1,9 @@
+"""
+AL Window Profile CSV Generator — Streamlit v2.5
+Click a row to select → Move Up / Move Down / Delete.
+No sidebar. Single view.
+"""
+
 import streamlit as st
 import pandas as pd
 import csv
@@ -150,17 +156,21 @@ def renumber():
 #  CSV GENERATION  (v2.5 — 'Top' → 'TOP' fix)
 # ════════════════════════════════════════════════════════════════════
 
-def _row(sid, ktnbar, code, desc, wm10, hm10, orient, pos, nccode, today, color, colorcode):
+TAG_PREFIX = {'Fixed Lite': 'FXLITE', 'Sliding Window XO': 'XO', 'Sliding Window OX': 'OX'}
+
+
+def _row(sid, ktnbar, code, desc, wm10, hm10, orient, pos, nccode, today, color, colorcode, tag):
     return [
         sid, 1, 1, 1, ktnbar, 90, 90, code, desc, wm10, hm10,
         0, 0, orient, 0, 0, pos, 0, 0,
         st.session_state.dealer, today, nccode,
-        0, colorcode, color, code, st.session_state.tag,
+        0, colorcode, color, code, tag,
         '', '', '', '', '', ''
     ]
 
 
 def gen_fixed_lite(w, color, cc, today, sid):
+    tag = f"FXLITE_{st.session_state.tag}"
     wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
     code = get_profile_code(color, 'fixed')
     desc = PROFILE_DESCRIPTIONS[code]
@@ -169,10 +179,11 @@ def gen_fixed_lite(w, color, cc, today, sid):
         o, k = 'TOP/BOTTOM', int(round((hm + 2 * 25.4) * 10))
     else:
         o, k = 'UPRIGHT', int(round((hm + 25.4) * 10))
-    return [_row(sid + i, k, code, desc, wm10, hm10, o, pos, 'Z MF_UPRIGHT_FIXED', today, color, cc) for i in range(2)]
+    return [_row(sid + i, k, code, desc, wm10, hm10, o, pos, 'Z MF_UPRIGHT_FIXED', today, color, cc, tag) for i in range(2)]
 
 
 def gen_sliding_xo(w, color, cc, today, sid):
+    tag = f"XO_{st.session_state.tag}"
     wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
     wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
     fc, mc = get_profile_code(color, 'fixed'), get_profile_code(color, 'moving')
@@ -190,10 +201,11 @@ def gen_sliding_xo(w, color, cc, today, sid):
         (smc, P[smc], 'LEFT', vk, 'Z AL SASH UPRIGHT MOVING XO'),
         (spc, P[spc], 'RIGHT', vk, 'Z SASH PULL UPRIGHT'),
     ]
-    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc) for i, (c, d, o, k, nc) in enumerate(specs)]
+    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc, tag) for i, (c, d, o, k, nc) in enumerate(specs)]
 
 
 def gen_sliding_ox(w, color, cc, today, sid):
+    tag = f"OX_{st.session_state.tag}"
     wm, hm, pos = w['width_mm'], w['height_mm'], w['number']
     wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
     fc, mc = get_profile_code(color, 'fixed'), get_profile_code(color, 'moving')
@@ -211,7 +223,7 @@ def gen_sliding_ox(w, color, cc, today, sid):
         (smc, P[smc], 'LEFT', vk, 'Z AL SASH UPRIGHT MOVING OX'),
         (spc, P[spc], 'RIGHT', vk, 'Z SASH PULL UPRIGHT'),
     ]
-    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc) for i, (c, d, o, k, nc) in enumerate(specs)]
+    return [_row(sid + i, k, c, d, wm10, hm10, o, pos, nc, today, color, cc, tag) for i, (c, d, o, k, nc) in enumerate(specs)]
 
 
 GENERATORS = {'Fixed Lite': gen_fixed_lite, 'Sliding Window XO': gen_sliding_xo, 'Sliding Window OX': gen_sliding_ox}
