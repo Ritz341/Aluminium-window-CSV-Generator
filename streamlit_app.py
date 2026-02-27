@@ -1,7 +1,6 @@
 """
-AL Window Profile CSV Generator — Streamlit v2.5
-Click a row to select → Move Up / Move Down / Delete.
-No sidebar. Single view.
+AL Window Profile CSV Generator — Streamlit v2.6
+Click-to-select rows, move-to-position, import CSV, summary panels.
 """
 
 import streamlit as st
@@ -21,66 +20,77 @@ st.set_page_config(
 # ── Theme ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
     [data-testid="collapsedControl"] { display: none; }
     section[data-testid="stSidebar"] { display: none; }
 
     .block-container {
-        padding: 1rem 2rem 1rem 2rem;
+        padding: 0.6rem 1.5rem 0.6rem 1.5rem;
         max-width: 1800px;
-        font-family: 'DM Sans', sans-serif;
+        font-family: 'JetBrains Mono', 'Consolas', monospace;
     }
 
+    /* dark header */
     .app-header {
-        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-        padding: 18px 28px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: baseline;
-        gap: 14px;
-        border-bottom: 3px solid #F59E0B;
+        background: linear-gradient(135deg, #1A1A2E 0%, #16213E 100%);
+        padding: 12px 22px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        display: flex; align-items: baseline; gap: 14px;
+        border-bottom: 3px solid #F5A623;
     }
     .app-header h1 {
-        color: #F8FAFC; font-family: 'DM Sans', sans-serif;
-        font-size: 1.35rem; font-weight: 700; margin: 0; letter-spacing: -0.02em;
+        color: #F5A623; font-family: 'JetBrains Mono', monospace;
+        font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: 0.02em;
     }
-    .app-header span {
-        color: #64748B; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace;
-    }
+    .app-header span { color: #7F8C8D; font-size: 0.72rem; }
 
+    /* section labels */
     .sec-label {
-        font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; font-weight: 500;
-        text-transform: uppercase; letter-spacing: 0.1em; color: #94A3B8;
-        border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; margin-bottom: 12px;
+        font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: 0.1em; color: #F5A623;
+        border-bottom: 1px solid #2C3E6B; padding-bottom: 4px; margin-bottom: 8px;
     }
 
+    /* metrics */
     div[data-testid="stMetric"] {
-        background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;
-        padding: 10px 14px; border-left: 3px solid #F59E0B;
+        background: #16213E; border: 1px solid #2C3E6B; border-radius: 6px;
+        padding: 6px 10px; border-left: 3px solid #F5A623;
     }
     div[data-testid="stMetric"] label {
-        font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
-        text-transform: uppercase; letter-spacing: 0.08em; color: #64748B;
+        font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;
+        text-transform: uppercase; letter-spacing: 0.08em; color: #7F8C8D;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-family: 'JetBrains Mono', monospace; font-size: 1.4rem;
-        font-weight: 500; color: #0F172A;
+        font-family: 'JetBrains Mono', monospace; font-size: 1.2rem;
+        font-weight: 600; color: #00D2FF;
     }
 
+    /* selection hint */
     .sel-hint {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.7rem; color: #94A3B8;
-        padding: 6px 0;
+        font-size: 0.68rem; color: #F5A623; padding: 4px 0; font-weight: 600;
     }
+    .sel-none { font-size: 0.68rem; color: #7F8C8D; padding: 4px 0; }
 
-    div[data-testid="stDataFrame"] { border: 1px solid #E2E8F0; border-radius: 8px; }
+    /* table */
+    div[data-testid="stDataFrame"] { border: 1px solid #2C3E6B; border-radius: 6px; }
+
+    /* info box */
+    .info-box {
+        background: #16213E; border: 1px solid #2C3E6B; border-radius: 6px;
+        padding: 10px 14px; margin: 6px 0; font-size: 0.72rem;
+        font-family: 'JetBrains Mono', monospace; color: #7F8C8D;
+        line-height: 1.6;
+    }
+    .info-box b { color: #00D2FF; }
+    .info-box .amber { color: #F5A623; }
 
     .app-footer {
-        text-align: center; color: #94A3B8;
+        text-align: center; color: #7F8C8D;
         font-family: 'JetBrains Mono', monospace;
-        font-size: 0.65rem; padding: 10px 0 2px; letter-spacing: 0.05em;
+        font-size: 0.58rem; padding: 6px 0 2px; letter-spacing: 0.05em;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -142,9 +152,10 @@ def get_profile_code(color_choice, profile_type):
 
 
 # ── Session state ───────────────────────────────────────────────────
-for key, default in [('windows', []), ('dealer', ''), ('tag', ''), ('color', '4 Black')]:
-    if key not in st.session_state:
-        st.session_state[key] = default
+defaults = {'windows': [], 'dealer': '', 'tag': '', 'color': '4 Black', 'msg': ''}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 
 def renumber():
@@ -153,11 +164,8 @@ def renumber():
 
 
 # ════════════════════════════════════════════════════════════════════
-#  CSV GENERATION  (v2.5 — 'Top' → 'TOP' fix)
+#  CSV GENERATION (v2.6)
 # ════════════════════════════════════════════════════════════════════
-
-TAG_PREFIX = {'Fixed Lite': 'FXLITE', 'Sliding Window XO': 'XO', 'Sliding Window OX': 'OX'}
-
 
 def _row(sid, ktnbar, code, desc, wm10, hm10, orient, pos, nccode, today, color, colorcode, tag):
     return [
@@ -250,14 +258,62 @@ def generate_csv():
     return out.getvalue()
 
 
+def import_csv_data(uploaded):
+    """Parse an uploaded CSV back into window list."""
+    try:
+        content = uploaded.read().decode('utf-8')
+        reader = csv.reader(StringIO(content))
+        header = next(reader)
+        rows = list(reader)
+        if not rows:
+            return False, 'CSV is empty'
+
+        seen = {}
+        for row in rows:
+            pos = int(row[16])
+            if pos not in seen:
+                w_mm = int(row[9]) / 10.0
+                h_mm = int(row[10]) / 10.0
+                nc = row[21]
+                if 'SLIDING OX' in nc or 'MOVING OX' in nc:
+                    wtype = 'Sliding Window OX'
+                elif 'SLIDING' in nc or 'MOVING' in nc:
+                    wtype = 'Sliding Window XO'
+                else:
+                    wtype = 'Fixed Lite'
+                seen[pos] = {
+                    'number': pos,
+                    'width': round(w_mm / 25.4, 4),
+                    'height': round(h_mm / 25.4, 4),
+                    'width_mm': w_mm,
+                    'height_mm': h_mm,
+                    'type': wtype
+                }
+        st.session_state.windows = [seen[k] for k in sorted(seen.keys())]
+
+        # extract dealer / tag
+        st.session_state.dealer = rows[0][19]
+        raw_tag = rows[0][27]
+        for prefix in ['FXLITE_', 'XO_', 'OX_']:
+            if raw_tag.startswith(prefix):
+                raw_tag = raw_tag[len(prefix):]
+                break
+        st.session_state.tag = raw_tag
+        renumber()
+        return True, f'Imported {len(st.session_state.windows)} windows'
+    except Exception as e:
+        return False, str(e)
+
+
 # ════════════════════════════════════════════════════════════════════
 #  LAYOUT
 # ════════════════════════════════════════════════════════════════════
 
+# ── Header ──────────────────────────────────────────────────────────
 st.markdown("""
 <div class="app-header">
-    <h1>🪟 Window Profile Generator</h1>
-    <span>v2.5  •  AL PROFILE CSV</span>
+    <h1>▣ WINDOW PROFILE GENERATOR</h1>
+    <span>v2.6 &nbsp;•&nbsp; AL PROFILE CSV</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -268,50 +324,58 @@ n_fl = sum(1 for w in st.session_state.windows if w['type'] == 'Fixed Lite')
 n_xo = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window XO')
 n_ox = sum(1 for w in st.session_state.windows if w['type'] == 'Sliding Window OX')
 
-m1, m2, m3, m4, m5, m6, m7 = st.columns([1, 1, 1, 1, 1, 2, 2])
+m1, m2, m3, m4, m5, m6 = st.columns([1, 1, 1, 1, 1, 2.5])
 m1.metric("Windows", n_win)
 m2.metric("Profiles", n_prof)
 m3.metric("Fixed", n_fl)
 m4.metric("XO", n_xo)
 m5.metric("OX", n_ox)
 with m6:
-    st.caption(f"Dealer: **{st.session_state.dealer or '—'}**")
-    st.caption(f"Tag: **{st.session_state.tag or '—'}**")
-with m7:
-    st.caption(f"Color: **{st.session_state.color}**")
-    st.caption(f"Date: **{date.today().strftime('%Y-%m-%d')}**")
+    info_parts = []
+    d = st.session_state.dealer or '---'
+    t = st.session_state.tag or '---'
+    st.markdown(
+        f'<div class="info-box">'
+        f'<b>DEALER:</b> {d.upper()} &nbsp;|&nbsp; '
+        f'<b>TAG:</b> {t.upper()} &nbsp;|&nbsp; '
+        f'<span class="amber">{st.session_state.color}</span> &nbsp;|&nbsp; '
+        f'{date.today().strftime("%Y-%m-%d")}'
+        f'</div>', unsafe_allow_html=True)
 
-st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+# show status message
+if st.session_state.msg:
+    st.success(st.session_state.msg)
+    st.session_state.msg = ''
 
 # ── Main body ───────────────────────────────────────────────────────
-col_input, col_list = st.columns([1, 2.4], gap="large")
+col_input, col_list = st.columns([1, 2.6], gap="medium")
 
 # ─── LEFT: Inputs ──────────────────────────────────────────────────
 with col_input:
-    st.markdown('<div class="sec-label">Project Setup</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-label">// PROJECT SETUP</div>', unsafe_allow_html=True)
     pc1, pc2 = st.columns(2)
     with pc1:
         st.session_state.dealer = st.text_input("Dealer", value=st.session_state.dealer, placeholder="Dealer name")
     with pc2:
-        st.session_state.tag = st.text_input("Tag / ID", value=st.session_state.tag, placeholder="Project tag")
+        st.session_state.tag = st.text_input("Tag", value=st.session_state.tag, placeholder="Project tag")
     st.session_state.color = st.selectbox(
         "Color", list(COLOR_CODES.keys()),
         index=list(COLOR_CODES.keys()).index(st.session_state.color)
     )
 
-    st.markdown('<div class="sec-label" style="margin-top:16px">Add Windows</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-label">// ADD WINDOWS</div>', unsafe_allow_html=True)
 
     with st.form("add_form", clear_on_submit=True):
-        window_type = st.selectbox("Window Type", ["Fixed Lite", "Sliding Window XO", "Sliding Window OX"])
+        window_type = st.selectbox("Type", ["Fixed Lite", "Sliding Window XO", "Sliding Window OX"])
         wc1, wc2, wc3 = st.columns([2, 2, 1])
         with wc1:
-            width_str = st.text_input("Width (in)", value="", placeholder="43.6875")
+            width_str = st.text_input("W (in)", value="", placeholder="43.6875")
         with wc2:
-            height_str = st.text_input("Height (in)", value="", placeholder="64.9375")
+            height_str = st.text_input("H (in)", value="", placeholder="64.9375")
         with wc3:
             quantity = st.number_input("Qty", min_value=1, max_value=100, value=1)
 
-        if st.form_submit_button("➕  Add Window(s)", type="primary", use_container_width=True):
+        if st.form_submit_button("➕  ADD WINDOW(S)", type="primary", use_container_width=True):
             try:
                 width = float(width_str) if width_str.strip() else 0.0
             except ValueError:
@@ -343,97 +407,111 @@ with col_input:
                     st.warning(f"Pos {', '.join(map(str, narrow))}: height < 14.5\" → TOP/BOTTOM, ktnbar = width+2\"")
                 st.rerun()
 
+    # Quick actions
     qa1, qa2 = st.columns(2)
     with qa1:
-        if st.button("📋 Duplicate Last", use_container_width=True, disabled=n_win == 0):
+        if st.button("📋 Dup Last", use_container_width=True, disabled=n_win == 0):
             st.session_state.windows.append({**st.session_state.windows[-1]})
             renumber()
             st.rerun()
     with qa2:
-        if st.button("🗑️ Clear All", use_container_width=True, disabled=n_win == 0):
+        if st.button("🗑 Clear All", use_container_width=True, disabled=n_win == 0):
             st.session_state.windows = []
             st.rerun()
 
-    st.markdown('<div class="sec-label" style="margin-top:16px">Output</div>', unsafe_allow_html=True)
-    if st.button("📊  Generate CSV", type="primary", use_container_width=True, disabled=n_win == 0):
+    # Import CSV
+    st.markdown('<div class="sec-label">// IMPORT / EXPORT</div>', unsafe_allow_html=True)
+
+    uploaded = st.file_uploader("Import existing CSV", type=['csv'], label_visibility='collapsed')
+    if uploaded is not None:
+        ok, msg = import_csv_data(uploaded)
+        if ok:
+            st.session_state.msg = msg
+            st.rerun()
+        else:
+            st.error(msg)
+
+    if st.button("📊  GENERATE CSV", type="primary", use_container_width=True, disabled=n_win == 0):
         if not st.session_state.dealer or not st.session_state.tag:
             st.error("Fill in Dealer and Tag")
         else:
             csv_data = generate_csv()
             if csv_data:
                 st.success(f"{n_win} windows → {n_prof} profiles")
-                st.download_button("⬇️  Download CSV", data=csv_data,
+                st.download_button("⬇️  DOWNLOAD CSV", data=csv_data,
                                    file_name=f"{st.session_state.tag}_windows.csv",
                                    mime="text/csv", use_container_width=True)
 
+    # Formulas reference (collapsible)
+    with st.expander("📐 FORMULAS REFERENCE"):
+        st.markdown("""
+**Fixed Lite (height ≥ 14.5"):**
+- Orientation: UPRIGHT
+- ktnbar = (height + 1") × 10
 
-# ─── RIGHT: Clickable Table + Move Buttons ─────────────────────────
+**Fixed Lite (height < 14.5", min 12.75"):**
+- Orientation: TOP/BOTTOM
+- ktnbar = (width + 2") × 10
+
+**Sliding XO / OX:**
+- Main frame upright: (height + 1") × 10
+- Sash top/bottom: ((width/2) + 0.625") × 10
+- Sash upright: (height - 4.8125") × 10
+        """)
+
+
+# ─── RIGHT: Clickable Table + Actions ──────────────────────────────
 with col_list:
-    st.markdown('<div class="sec-label">Window List — click a row to select, then use buttons below</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-label">// WINDOW LIST — click row to select</div>', unsafe_allow_html=True)
 
     if st.session_state.windows:
         df = pd.DataFrame(st.session_state.windows)
         df['profiles'] = df['type'].apply(lambda t: 2 if t == 'Fixed Lite' else 6)
         display_df = df[['number', 'type', 'width', 'height', 'width_mm', 'height_mm', 'profiles']]
-        display_df.columns = ['Pos', 'Type', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'Profiles']
+        display_df.columns = ['POS', 'TYPE', 'W (in)', 'H (in)', 'W (mm)', 'H (mm)', 'PROFILES']
 
-        # ── Clickable dataframe with row selection ──────────────────
+        # Clickable dataframe
         event = st.dataframe(
             display_df,
             use_container_width=True,
             hide_index=True,
-            height=min(42 + 35 * len(st.session_state.windows), 520),
+            height=min(38 + 28 * len(st.session_state.windows), 460),
             on_select="rerun",
             selection_mode="single-row",
             key="window_table"
         )
 
-        # Get selected row index (0-based)
         selected_rows = event.selection.rows if event.selection.rows else []
         sel_idx = selected_rows[0] if selected_rows else None
 
-        # Show what's selected
+        # Selection info
         if sel_idx is not None:
             w = st.session_state.windows[sel_idx]
             st.markdown(
-                f'<div class="sel-hint">Selected: <b>Pos {w["number"]}</b> — '
-                f'{w["type"]}  {w["width"]}" × {w["height"]}"</div>',
-                unsafe_allow_html=True
-            )
+                f'<div class="sel-hint">▶ POS {w["number"]} — '
+                f'{w["type"].upper()}  {w["width"]}" × {w["height"]}"</div>',
+                unsafe_allow_html=True)
         else:
-            st.markdown('<div class="sel-hint">Click a row above to select it</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sel-none">Click a row to select</div>', unsafe_allow_html=True)
 
-        # ── Action buttons ──────────────────────────────────────────
-        bc1, bc2, bc3, bc4 = st.columns(4)
-        with bc1:
-            up_disabled = sel_idx is None or sel_idx == 0
-            if st.button("⬆️  Move Up", use_container_width=True, disabled=up_disabled):
+        # ── Action buttons — row 1: move ────────────────────────────
+        ac1, ac2, ac3, ac4, ac5 = st.columns([1, 1, 0.6, 0.8, 1])
+        with ac1:
+            if st.button("⬆️ UP", use_container_width=True, disabled=(sel_idx is None or sel_idx == 0)):
                 i = sel_idx
                 w = st.session_state.windows
                 w[i - 1], w[i] = w[i], w[i - 1]
                 renumber()
                 st.rerun()
-        with bc2:
-            down_disabled = sel_idx is None or sel_idx >= n_win - 1
-            if st.button("⬇️  Move Down", use_container_width=True, disabled=down_disabled):
+        with ac2:
+            if st.button("⬇️ DOWN", use_container_width=True, disabled=(sel_idx is None or sel_idx >= n_win - 1)):
                 i = sel_idx
                 w = st.session_state.windows
                 w[i], w[i + 1] = w[i + 1], w[i]
                 renumber()
                 st.rerun()
-        with bc3:
-            if st.button("🗑️  Delete", use_container_width=True, disabled=sel_idx is None):
-                st.session_state.windows.pop(sel_idx)
-                renumber()
-                st.rerun()
-        with bc4:
-            if st.button("📋  Duplicate", use_container_width=True, disabled=sel_idx is None):
-                dup = {**st.session_state.windows[sel_idx]}
-                st.session_state.windows.insert(sel_idx + 1, dup)
-                renumber()
-                st.rerun()
-    else:
-        st.info("← Add windows using the form")
-
-# ── Footer ──────────────────────────────────────────────────────────
-st.markdown('<div class="app-footer">AL Window Profile CSV Generator v2.5</div>', unsafe_allow_html=True)
+        with ac3:
+            move_to = st.text_input("TO#", value="", placeholder="#", label_visibility="collapsed",
+                                    key="moveto_input")
+        with ac4:
+     
