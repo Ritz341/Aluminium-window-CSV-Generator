@@ -1,5 +1,5 @@
 """
-AL Window Profile CSV Generator — Streamlit v2.6
+AL Window Profile CSV Generator — Streamlit v3.0
 Click-to-select rows, move-to-position, import CSV, summary panels.
 """
 
@@ -164,7 +164,7 @@ def renumber():
 
 
 # ════════════════════════════════════════════════════════════════════
-#  CSV GENERATION (v2.6)
+#  CSV GENERATION (v3.0)
 # ════════════════════════════════════════════════════════════════════
 
 def _row(sid, ktnbar, code, desc, wm10, hm10, orient, pos, nccode, today, color, colorcode, tag):
@@ -183,7 +183,7 @@ def gen_fixed_lite(w, color, cc, today, sid):
     code = get_profile_code(color, 'fixed')
     desc = PROFILE_DESCRIPTIONS[code]
     wm10, hm10 = int(round(wm * 10)), int(round(hm * 10))
-    if w['height'] < 14.5:
+    if w['height'] < 12.7:
         o, k = 'TOP/BOTTOM', int(round((wm + 2 * 25.4) * 10))
     else:
         o, k = 'UPRIGHT', int(round((hm + 25.4) * 10))
@@ -313,7 +313,7 @@ def import_csv_data(uploaded):
 st.markdown("""
 <div class="app-header">
     <h1>▣ WINDOW PROFILE GENERATOR</h1>
-    <span>v2.6 &nbsp;•&nbsp; AL PROFILE CSV</span>
+    <span>v3.0 &nbsp;•&nbsp; AL PROFILE CSV</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -387,8 +387,8 @@ with col_input:
 
             if width <= 0 or height <= 0:
                 st.error("Enter valid width and height")
-            elif window_type == 'Fixed Lite' and height < 12.75:
-                st.error(f"Height {height}\" is below 12.75\" minimum — cannot run on machine")
+            elif window_type == 'Fixed Lite' and height < 12.7 and width < 11.7:
+                st.error(f"Height {height}\" < 12.7\" AND Width {width}\" < 11.7\" — neither orientation produces safe cut length. Cannot run on machine.")
             else:
                 narrow = []
                 for _ in range(quantity):
@@ -400,11 +400,12 @@ with col_input:
                         'height_mm': round(height * 25.4, 2),
                         'type': window_type
                     })
-                    if window_type == 'Fixed Lite' and height < 14.5:
+                    if window_type == 'Fixed Lite' and height < 12.7:
                         narrow.append(num)
                 renumber()
                 if narrow:
-                    st.warning(f"Pos {', '.join(map(str, narrow))}: height < 14.5\" → TOP/BOTTOM, ktnbar = width+2\"")
+                    cut = round(width + 2, 4)
+                    st.warning(f"Pos {', '.join(map(str, narrow))}: height < 12.7\" → TOP/BOTTOM, ktnbar = width+2\" (cut length {cut}\")")
                 st.rerun()
 
     # Quick actions
@@ -445,13 +446,18 @@ with col_input:
     # Formulas reference (collapsible)
     with st.expander("📐 FORMULAS REFERENCE"):
         st.markdown("""
-**Fixed Lite (height ≥ 14.5"):**
+**Fixed Lite (height ≥ 12.7"):**
 - Orientation: UPRIGHT
 - ktnbar = (height + 1") × 10
+- Min cut length = 13.7"
 
-**Fixed Lite (height < 14.5", min 12.75"):**
+**Fixed Lite (height < 12.7", width ≥ 11.7"):**
 - Orientation: TOP/BOTTOM
 - ktnbar = (width + 2") × 10
+- Min cut length = 13.7"
+
+**Fixed Lite (height < 12.7" AND width < 11.7"):**
+- REJECTED — cannot run on machine
 
 **Sliding XO / OX:**
 - Main frame upright: (height + 1") × 10
@@ -572,4 +578,4 @@ with col_list:
         st.info("← Add windows using the form, or import an existing CSV")
 
 # ── Footer ──────────────────────────────────────────────────────────
-st.markdown('<div class="app-footer">AL WINDOW PROFILE CSV GENERATOR v2.6</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-footer">AL WINDOW PROFILE CSV GENERATOR v3.0</div>', unsafe_allow_html=True)
